@@ -89,7 +89,7 @@ public class GpsService extends Service implements LocationListener {
                 : new Notification.Builder(this);
         Notification n = b.setContentTitle("Kapten Meong sedang mencatat rute")
                 .setContentText("Sesi jalan aktif · ketuk untuk membuka")
-                .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                .setSmallIcon(R.drawable.ic_notif)
                 .setContentIntent(pi)
                 .setOngoing(true)
                 .build();

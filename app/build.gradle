@@ -1,5 +1,6 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
 
 android {
@@ -8,17 +9,26 @@ android {
 
     defaultConfig {
         applicationId "id.kaptenmeong.sehat"
-        minSdk 24
+        minSdk 26
         targetSdk 34
-        versionCode 2
-        versionName "1.1"
+        versionCode 3
+        versionName "2.0"
+    }
+
+    signingConfigs {
+        release {
+            // Kunci tetap: semua versi bertanda tangan sama, jadi update bisa ditimpa.
+            storeFile file('kaptenmeong.jks')
+            storePassword 'kaptenmeong2026'
+            keyAlias 'meong'
+            keyPassword 'kaptenmeong2026'
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            // Ditandatangani dengan kunci debug supaya APK langsung bisa dipasang.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
         }
     }
 
@@ -26,4 +36,14 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    implementation 'androidx.health.connect:connect-client:1.1.0-alpha07'
+    implementation 'androidx.activity:activity:1.8.2'
+    implementation 'androidx.core:core:1.12.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 }

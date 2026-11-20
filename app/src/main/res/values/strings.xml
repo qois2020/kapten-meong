@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Kapten Meong</string>
+    <string name="widget_desc">Langkah, air, dan timer puasa hari ini</string>
 </resources>

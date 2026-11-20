@@ -21,7 +21,20 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Build APK
-        run: gradle assembleRelease --no-daemon
+        run: |
+          set -o pipefail
+          gradle assembleRelease --no-daemon 2>&1 | tee build.log
+      - name: Simpan log jika gagal
+        if: failure()
+        run: |
+          mkdir -p logout && cp build.log logout/build.log || echo "no log" > logout/build.log
+          cd logout
+          git init -q -b buildlog
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add build.log
+          git commit -qm "Log build gagal ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" buildlog
       - name: Siapkan file APK
         run: |
           mkdir -p out
@@ -42,6 +55,6 @@ jobs:
       - name: Rilis di GitHub
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: Kapten Meong v1.0.${{ github.run_number }}
+          tag_name: v2.0.${{ github.run_number }}
+          name: Kapten Meong v2.0.${{ github.run_number }}
           files: out/KaptenMeong.apk
