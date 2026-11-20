@@ -338,6 +338,7 @@ nav.tabs button.on .e{transform:translateY(-2px) scale(1.12)}
     <div class="card stack">
       <div class="row between"><h3>Sesi jalan</h3><span class="muted small">timer menit & langkah</span></div>
       <div class="chips" id="paces" style="justify-content:center"></div>
+      <div id="gpsBox"></div>
       <div class="bigtime num" id="walkTime">00:00</div>
       <div style="text-align:center" class="muted"><b class="num" id="walkSteps">0</b> langkah (perkiraan)</div>
       <div class="row" id="walkBtns" style="justify-content:center"></div>
@@ -498,7 +499,7 @@ function sums(k){const d=getDay(k);const intake=d.foods.reduce((a,f)=>a+f.kcal*f
   const exK=d.ex.reduce((a,e)=>a+e.kcal,0), exM=d.ex.reduce((a,e)=>a+e.min,0);
   const steps=d.walks.reduce((a,w)=>a+w.steps,0), wMin=d.walks.reduce((a,w)=>a+w.min,0), wK=d.walks.reduce((a,w)=>a+w.kcal,0);
   return{intake:Math.round(intake),burn:Math.round(exK+wK),active:Math.round(exM+wMin),steps:Math.round(steps),walkMin:Math.round(wMin),walkK:Math.round(wK),water:d.water||0};}
-function stride(){return profile.height*0.415/100;}
+function stride(){return profile.strideM>0?profile.strideM:profile.height*0.415/100;}
 
 /* ---------- penyimpanan ---------- */
 const LS="kaptenmeong.v1";
@@ -572,7 +573,7 @@ function meow(){if(!profile.sound)return;try{ac=ac||new (window.AudioContext||wi
   o.frequency.setValueAtTime(520,t);o.frequency.linearRampToValueAtTime(950,t+.14);o.frequency.linearRampToValueAtTime(620,t+.5);
   g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.22,t+.05);g.gain.linearRampToValueAtTime(.15,t+.3);g.gain.linearRampToValueAtTime(0,t+.55);
   o.connect(f);f.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+.6);}catch(e){}}
-let toastT;function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("on"),2400);}
+let toastT;function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("on"),Math.max(2400,m.length*65));}
 function treasure(){const e=["🪙","💰","🐾","⭐","💎"];for(let i=0;i<26;i++){const s=document.createElement("div");s.className="coin";s.textContent=e[i%e.length];
   s.style.left=Math.random()*100+"vw";s.style.animationDuration=(1.6+Math.random()*1.4)+"s";s.style.animationDelay=Math.random()*.5+"s";document.body.appendChild(s);setTimeout(()=>s.remove(),3800);}}
 function celebrate(k,what,msg){const d=mutDay(k);d.cel=d.cel||{};if(d.cel[what])return;d.cel[what]=true;saveDay(k);treasure();toast(msg);say(msg);}
@@ -713,6 +714,7 @@ function renderSteps(){
   $("#paces").innerHTML=Object.keys(PACES).map(k=>`<button class="chip ${profile.pace===k?"on":""}" data-act="pace" data-k="${k}">${PACES[k].label} · ${PACES[k].spm}/mnt</button>`).join("");
   $("#walkBtns").innerHTML=!w?`<button class="btn mint" data-act="walkStart">▶ Mulai jalan</button>`
     :`${w.running?`<button class="btn gold" data-act="walkPause">⏸ Jeda</button>`:`<button class="btn mint" data-act="walkResume">▶ Lanjut</button>`}<button class="btn coral" data-act="walkStop">■ Selesai & simpan</button>`;
+  renderGps();
   tickWalk();
   // chart 7 hari
   const ks=[];for(let i=6;i>=0;i--)ks.push(shift(viewDate,-i));
@@ -726,7 +728,7 @@ function renderSteps(){
   $("#stepChart").innerHTML=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Grafik langkah 7 hari"><line x1="${pad}" x2="${W}" y1="${gy}" y2="${gy}" stroke="#F5B700" stroke-width="2" stroke-dasharray="5 4"/><text x="0" y="${gy+4}">🏝️</text>${bars}</svg>`;
   const d=getDay(viewDate);
   $("#walkLog").innerHTML=d.walks.length?`<div class="list">`+d.walks.map(x=>x.src==="sensor"?`<div class="item"><div class="ic">📲</div><div class="t"><b class="num">${fmt(x.steps)} langkah</b><span class="num">dihitung otomatis sensor HP · ± ${x.kcal} kkal</span></div></div>`
-  :`<div class="item"><div class="ic">${x.src==="manual"?"📱":"⛵"}</div><div class="t"><b class="num">${x.sens?"Sesi jalan "+fmt(x.min,0)+" menit":fmt(x.steps)+" langkah"}</b><span class="num">${x.sens?"langkah ikut sensor":fmt(x.min,0)+" menit"} · ${x.kcal} kkal${x.src==="timer"?" · "+PACES[x.pace].label:" · dari HP"}${x.time?" · "+clock(x.time):""}</span></div><button class="x" data-act="delWalk" data-id="${x.id}" aria-label="Hapus">×</button></div>`).join("")+`</div>`
+  :`<div class="item"><div class="ic">${x.src==="manual"?"📱":x.dist?"📍":"⛵"}</div><div class="t"><b class="num">${x.sens?"Sesi jalan "+fmt(x.min,0)+" menit":fmt(x.steps)+" langkah"}</b><span class="num">${x.dist?"📍 "+fmt(x.dist/1000,2)+" km · ":""}${x.sens?(x.sensSteps?fmt(x.sensSteps)+" langkah (sensor)":"langkah ikut sensor"):fmt(x.min,0)+" menit"} · ${x.kcal} kkal${x.src==="timer"?" · "+PACES[x.pace].label:" · dari HP"}${x.time?" · "+clock(x.time):""}</span></div><button class="x" data-act="delWalk" data-id="${x.id}" aria-label="Hapus">×</button></div>`).join("")+`</div>`
     :`<div class="empty">Belum ada langkah tercatat ${viewDate===todayKey()?"hari ini":"di hari ini"}.</div>`;
 }
 function renderWeight(){
@@ -762,7 +764,7 @@ function renderSettings(){
   const set=(id,v)=>{const e=$(id);if(document.activeElement!==e)e.value=v;};
   set("#sName",profile.name);set("#sAge",profile.age);set("#sSex",profile.sex);set("#sHeight",profile.height);set("#sStart",profile.startWeight);
   set("#sTarget",profile.targetWeight);set("#sSteps",profile.stepGoal);set("#sWater",profile.waterGoal);set("#sKcal",profile.kcalGoal);$("#sSound").checked=!!profile.sound;
-  $("#sAuto").textContent="Target kalori otomatis: "+fmt(autoKcal())+" kkal/hari (kebutuhan harian pekerja kantoran"+(curWeight()>profile.targetWeight+0.3?" dikurangi 500 kkal untuk turun ±0,5 kg/minggu":"")+").";
+  $("#sAuto").innerHTML=esc("Target kalori otomatis: "+fmt(autoKcal())+" kkal/hari (kebutuhan harian pekerja kantoran"+(curWeight()>profile.targetWeight+0.3?" dikurangi 500 kkal untuk turun ±0,5 kg/minggu":"")+").")+"<br>Panjang langkah: <b>"+fmt(stride()*100,0)+" cm</b> "+(profile.strideM>0?"(dikalibrasi GPS) <button class=\"btn ghost sm\" data-act=\"resetStride\">Reset</button>":"(perkiraan dari tinggi badan; jalan dengan GPS ±250 m untuk kalibrasi)");
   $("#dataInfo").textContent=(col?"Data tersimpan di akun Claude-mu, jadi ikut terbawa di HP dan laptop.":NS?"Data tersimpan di HP ini. Menghapus aplikasi akan menghapus datanya.":"Data tersimpan di browser perangkat ini.")+" "+Object.keys(days).length+" hari tercatat.";
 }
 function renderAll(){renderHome();renderFast();renderFood();renderEx();renderSteps();renderWeight();renderSettings();}
@@ -782,12 +784,38 @@ function syncSensor(){if(sensorState()!=="on")return;const st=sensorSteps();cons
   w.steps=st;w.min=Math.round(st/100);w.kcal=Math.round(st*0.04*curWeight()/70);saveDay(k);
   if(viewDate===k){renderSteps();renderHome();}
   if(sums(k).steps>=profile.stepGoal)celebrate(k,"steps","Kapal sampai di pulau target langkah! 🏝️");}
-window.__sensorChanged=()=>{renderSensor();syncSensor();};
+window.__sensorChanged=()=>{syncSensor();renderSteps();};
 window.__back=()=>{if($("#sheet").classList.contains("on")){closeSheet();return true;}if(tab!=="home"){setTab("home");return true;}return false;};
 if(NS)setInterval(()=>{if(!document.hidden){syncSensor();if(tab==="steps")renderSensor();}},5000);
 
+/* ---------- GPS (versi APK) ---------- */
+const NG=window.AndroidGps||null;
+function gpsReady(){try{return !!NG&&NG.available()&&NG.permitted()&&NG.enabled();}catch(e){return false;}}
+function gpsState(){try{return JSON.parse(NG.state());}catch(e){return{run:false,m:0,spd:0,acc:-1,fix:false,pts:[]};}}
+function gpsCall(fn,arg){try{if(arg===undefined)NG[fn]();else NG[fn](arg);}catch(e){}}
+function renderGps(){const box=$("#gpsBox");if(!NG){box.innerHTML="";return;}const w=profile.walk;let av=false,perm=false,en=false;
+  try{av=NG.available();perm=NG.permitted();en=NG.enabled();}catch(e){}
+  if(!av){box.innerHTML=`<div class="muted small" style="text-align:center">HP ini tidak punya GPS.</div>`;return;}
+  if(w&&w.gps){box.innerHTML=`<div class="grid2" style="grid-template-columns:repeat(3,1fr);gap:8px;text-align:center"><div><div class="muted small">Jarak GPS</div><b class="num" id="gpsDist">0,00 km</b></div><div><div class="muted small">Kecepatan</div><b class="num" id="gpsSpd">-</b></div><div><div class="muted small">Sinyal</div><b id="gpsSig">…</b></div></div><div id="route" style="margin-top:8px"></div>`;tickGps();return;}
+  if(!perm){box.innerHTML=`<div class="note row between" style="gap:8px"><span>📍 Ukur jarak asli dengan GPS</span><button class="btn sm mint" data-act="gpsPerm">Izinkan lokasi</button></div>`;return;}
+  if(!en){box.innerHTML=`<div class="note row between" style="gap:8px"><span>📍 Lokasi HP sedang mati</span><button class="btn sm" data-act="gpsSettings">Nyalakan</button></div>`;return;}
+  box.innerHTML=`<label class="row" for="gpsOn" style="justify-content:center;font-weight:800"><input type="checkbox" id="gpsOn" ${profile.gps!==false?"checked":""}> 📍 Rekam rute & jarak dengan GPS</label>`;}
+function tickGps(){const w=profile.walk;if(!w||!w.gps||!$("#gpsDist"))return;const s=gpsState();
+  $("#gpsDist").textContent=fmt(s.m/1000,2)+" km";const h=walkElapsed()/36e5;
+  $("#gpsSpd").textContent=s.m>20&&h>0?fmt(s.m/1000/h,1)+" km/j":"-";
+  $("#gpsSig").textContent=!s.fix?"Mencari…":s.acc<=10?"Bagus":s.acc<=30?"Sedang":"Lemah";
+  drawRoute(s);}
+function drawRoute(s){const box=$("#route");if(!box)return;const pts=s.pts||[];
+  if(pts.length<2){box.innerHTML=`<div class="empty small">${s.fix?"Mulai berjalan, rute akan tergambar di sini 🗺️":"Mencari sinyal GPS… lebih cepat di tempat terbuka."}</div>`;return;}
+  const lat0=pts[0][0],lon0=pts[0][1],k=Math.cos(lat0*Math.PI/180);const xy=pts.map(p=>[(p[1]-lon0)*111320*k,-(p[0]-lat0)*110540]);
+  const xs=xy.map(p=>p[0]),ys=xy.map(p=>p[1]);const minx=Math.min(...xs),maxx=Math.max(...xs),miny=Math.min(...ys),maxy=Math.max(...ys);
+  const W=300,H=150,pad=16;const sc=Math.min((W-2*pad)/Math.max(maxx-minx,20),(H-2*pad)/Math.max(maxy-miny,20));
+  const ox=(W-(maxx-minx)*sc)/2,oy=(H-(maxy-miny)*sc)/2;const P=xy.map(p=>[(p[0]-minx)*sc+ox,(p[1]-miny)*sc+oy]);
+  const line=P.map(p=>p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ");const a=P[0],b=P[P.length-1];
+  box.innerHTML=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Rute jalan" style="background:#EAF4FF;border-radius:14px"><polyline points="${line}" fill="none" stroke="#2E86DE" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${a[0].toFixed(1)}" cy="${a[1].toFixed(1)}" r="6" fill="#22B98A" stroke="#fff" stroke-width="2"/><text x="${b[0].toFixed(1)}" y="${(b[1]+7).toFixed(1)}" text-anchor="middle" style="font-size:20px">⛵</text></svg>`;}
+
 /* ---------- timer ---------- */
-function tickWalk(){const el=walkElapsed();$("#walkTime").textContent=hhmm(el);const w=profile.walk;$("#walkSteps").textContent=fmt(w&&w.sensor0!=null&&sensorState()==="on"?Math.max(0,sensorSteps()-w.sensor0):Math.round(el/60000*PACES[profile.pace].spm));}
+function tickWalk(){const el=walkElapsed();$("#walkTime").textContent=hhmm(el);const w=profile.walk;$("#walkSteps").textContent=fmt(w&&w.sensor0!=null&&sensorState()==="on"?Math.max(0,sensorSteps()-w.sensor0):Math.round(el/60000*PACES[profile.pace].spm));tickGps();}
 function tickFast(){const f=profile.fast;if(!f)return;const el=Date.now()-f.start,goal=f.goal*36e5;const p=Math.min(1,el/goal);
   const ft=$("#frTime");if(ft){ft.textContent=hhmm(el);$("#frLeft").textContent=el>=goal?"Target tercapai! Boleh buka 🎉":"sisa "+hhmm(goal-el);
     const arc=$("#frArc");const c=2*Math.PI*96;arc.setAttribute("stroke-dashoffset",c*(1-p));arc.setAttribute("stroke",p>=1?"#22B98A":"#8E7CF0");}
@@ -841,22 +869,32 @@ document.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(
     renderEx();renderHome();toast(ex[0]+" "+ex[1]+" "+min+" menit tercatat!");if(sums(viewDate).active>=30)celebrate(viewDate,"active","30 menit aktif tercapai! Kru paling rajin 💪");break;}
   case "delEx":{const day=mutDay(viewDate);day.ex=day.ex.filter(x=>x.id!==d.id);saveDay(viewDate);renderEx();renderHome();break;}
   case "pace":{if(profile.walk&&profile.walk.running){toast("Jeda dulu untuk ganti kecepatan");break;}profile.pace=d.k;saveProfile();renderSteps();break;}
-  case "walkStart":profile.walk={startedAt:Date.now(),acc:0,running:true,sensor0:sensorState()==="on"?sensorSteps():null};saveProfile();renderSteps();say("Angkat jangkar! Kita mulai jalan ⛵");break;
-  case "walkPause":{const w=profile.walk;w.acc+=Date.now()-w.startedAt;w.running=false;saveProfile();renderSteps();break;}
-  case "walkResume":{const w=profile.walk;w.startedAt=Date.now();w.running=true;saveProfile();renderSteps();break;}
-  case "walkStop":{const el=walkElapsed();profile.walk=null;saveProfile();const min=el/60000;
+  case "walkStart":profile.walk={startedAt:Date.now(),acc:0,running:true,sensor0:sensorState()==="on"?sensorSteps():null,gps:gpsReady()&&profile.gps!==false};if(profile.walk.gps)gpsCall("start",true);saveProfile();renderSteps();say("Angkat jangkar! Kita mulai jalan ⛵");break;
+  case "walkPause":{const w=profile.walk;w.acc+=Date.now()-w.startedAt;w.running=false;if(w.gps)gpsCall("pause");saveProfile();renderSteps();break;}
+  case "walkResume":{const w=profile.walk;w.startedAt=Date.now();w.running=true;if(w.gps)gpsCall("start",false);saveProfile();renderSteps();break;}
+  case "walkStop":{const w=profile.walk;const el=walkElapsed();const g=w&&w.gps?gpsState():null;if(w&&w.gps)gpsCall("pause");
+    profile.walk=null;saveProfile();const min=el/60000;
     if(min<0.25){toast("Sesi terlalu singkat, tidak disimpan");renderSteps();break;}
     const P=PACES[profile.pace];const k=todayKey();const day=mutDay(k);
-    if(sensorState()==="on"){day.walks.push({id:uid(),src:"timer",pace:profile.pace,min:Math.round(min*10)/10,steps:0,kcal:exKcal(P.met,min),time:Date.now(),sens:true});saveDay(k);
-      viewDate=k;renderAll();toast("⛵ Sesi "+fmt(min,0)+" menit tersimpan. Langkahnya dihitung sensor HP.");break;}
-    day.walks.push({id:uid(),src:"timer",pace:profile.pace,min:Math.round(min*10)/10,steps:Math.round(min*P.spm),kcal:exKcal(P.met,min),time:Date.now()});saveDay(k);
-    viewDate=k;renderAll();toast("⛵ "+fmt(Math.round(min*P.spm))+" langkah dalam "+fmt(min,0)+" menit tersimpan!");
+    const dist=g&&g.m>=30?Math.round(g.m):0;const sensOn=sensorState()==="on";
+    const delta=sensOn&&w.sensor0!=null?Math.max(0,sensorSteps()-w.sensor0):0;
+    let met=P.met;if(dist){const kmh=dist/1000/(min/60);met=kmh<3.5?2.8:kmh<4.8?3.5:kmh<5.6?4.3:kmh<6.5?5.0:kmh<8?7.0:9.0;}
+    let note="";
+    if(sensOn&&dist>=250&&delta>=300){const sl=dist/delta;if(sl>=0.4&&sl<=1.3){profile.strideM=Math.round(sl*1000)/1000;saveProfile();note=" Panjang langkahmu dikalibrasi: "+fmt(sl*100,0)+" cm.";}}
+    const steps=sensOn?0:dist?Math.round(dist/stride()):Math.round(min*P.spm);
+    const entry={id:uid(),src:"timer",pace:profile.pace,min:Math.round(min*10)/10,steps,kcal:exKcal(met,min),time:Date.now()};
+    if(sensOn)entry.sens=true;if(dist)entry.dist=dist;if(delta)entry.sensSteps=delta;
+    day.walks.push(entry);saveDay(k);viewDate=k;renderAll();
+    toast((dist?"📍 "+fmt(dist/1000,2)+" km · ":"⛵ ")+fmt(min,0)+" menit tersimpan."+note);
     if(sums(k).steps>=profile.stepGoal)celebrate(k,"steps","Kapal sampai di pulau target langkah! 🏝️");break;}
   case "addSteps":{const st=Math.round(+$("#mSteps").value);if(!(st>0)){toast("Isi jumlah langkahnya dulu");break;}
     const mn=+$("#mMin").value>0?+$("#mMin").value:Math.round(st/100);const day=mutDay(viewDate);
     day.walks.push({id:uid(),src:"manual",pace:"sedang",min:mn,steps:st,kcal:Math.round(st*0.04*curWeight()/70),time:viewDate===todayKey()?Date.now():null});saveDay(viewDate);
     $("#mSteps").value="";$("#mMin").value="";renderSteps();renderHome();toast("+"+fmt(st)+" langkah 👣");
     if(sums(viewDate).steps>=profile.stepGoal)celebrate(viewDate,"steps","Kapal sampai di pulau target langkah! 🏝️");break;}
+  case "gpsPerm":gpsCall("requestPermission");break;
+  case "gpsSettings":gpsCall("openLocationSettings");break;
+  case "resetStride":delete profile.strideM;saveProfile();renderAll();toast("Panjang langkah kembali dihitung dari tinggi badan");break;
   case "sensorPerm":try{NS.requestPermission();}catch(e){}break;
   case "delWalk":{const day=mutDay(viewDate);day.walks=day.walks.filter(x=>x.id!==d.id);saveDay(viewDate);renderSteps();renderHome();break;}
   case "wStep":{const i=$("#wInput");i.value=Math.max(20,Math.round(((+i.value||curWeight())+ +d.n)*10)/10).toFixed(1);break;}
@@ -890,13 +928,14 @@ document.addEventListener("keydown",e=>{if((e.key==="Enter"||e.key===" ")&&e.tar
 $("#foodSearch").addEventListener("input",e=>{foodQ=e.target.value;renderFood();});
 $("#exMin").addEventListener("input",renderEx);
 document.addEventListener("change",e=>{
+  if(e.target.id==="gpsOn"){profile.gps=e.target.checked;saveProfile();}
   if(e.target.id==="winStart"&&e.target.value){profile.windowStart=e.target.value;saveProfile();renderFast();renderHome();}
   if(e.target.id==="lowDay"){mutDay(viewDate).lowDay=e.target.checked;saveDay(viewDate);renderFood();renderHome();toast(e.target.checked?"Hari rendah kalori: target "+kcalGoal()+" kkal":"Kembali ke target normal");}
 });
 document.addEventListener("visibilitychange",()=>{if(!document.hidden){if(NS)syncSensor();if(viewDate!==todayKey()&&viewDate===shift(todayKey(),-1))viewDate=todayKey();renderAll();}});
 
 /* ---------- mulai ---------- */
-loadLocal();setSync("local");renderAll();if(NS){syncSensor();}else initCloud();
+loadLocal();setSync("local");if(NG&&profile.walk&&profile.walk.running&&profile.walk.gps&&!gpsState().run)gpsCall("start",false);renderAll();if(NS||NG){syncSensor();}else initCloud();
 })();
 </script>
 </body>

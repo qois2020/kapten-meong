@@ -11,7 +11,9 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.location.LocationManager;
 import android.net.Uri;
+import android.provider.Settings;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
@@ -32,6 +34,7 @@ import java.util.Locale;
 public class MainActivity extends Activity implements SensorEventListener {
 
     private static final int REQ_ACTIVITY = 7;
+    private static final int REQ_GPS = 8;
     private WebView web;
     private SensorManager sensorManager;
     private Sensor stepCounter;
@@ -75,6 +78,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
         });
         web.addJavascriptInterface(new StepBridge(), "AndroidSteps");
+        web.addJavascriptInterface(new GpsBridge(), "AndroidGps");
         web.loadUrl("file:///android_asset/index.html");
 
         if (stepCounter != null && !hasActivityPermission()) {
@@ -114,10 +118,8 @@ public class MainActivity extends Activity implements SensorEventListener {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_ACTIVITY) {
-            startListening();
-            notifyPage();
-        }
+        if (requestCode == REQ_ACTIVITY) startListening();
+        notifyPage();
     }
 
     private void notifyPage() {
@@ -166,6 +168,79 @@ public class MainActivity extends Activity implements SensorEventListener {
         web.evaluateJavascript("(window.__back && window.__back()) ? 'y' : 'n'", value -> {
             if (value == null || !value.contains("y")) finish();
         });
+    }
+
+    private LocationManager locationManager() {
+        return (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+    }
+
+    private boolean hasLocationPermission() {
+        return checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** Dipanggil dari JavaScript sebagai window.AndroidGps */
+    public class GpsBridge {
+        @JavascriptInterface
+        public boolean available() {
+            LocationManager lm = locationManager();
+            return lm != null && lm.getAllProviders().contains(LocationManager.GPS_PROVIDER);
+        }
+
+        @JavascriptInterface
+        public boolean enabled() {
+            LocationManager lm = locationManager();
+            return lm != null && lm.isProviderEnabled(LocationManager.GPS_PROVIDER);
+        }
+
+        @JavascriptInterface
+        public boolean permitted() {
+            return hasLocationPermission();
+        }
+
+        @JavascriptInterface
+        public void requestPermission() {
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.POST_NOTIFICATIONS}, REQ_GPS);
+                } else {
+                    requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_GPS);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void openLocationSettings() {
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+                } catch (Exception ignored) { }
+            });
+        }
+
+        @JavascriptInterface
+        public void start(boolean reset) {
+            if (!hasLocationPermission()) return;
+            if (reset) GpsService.reset();
+            runOnUiThread(() -> {
+                Intent i = new Intent(MainActivity.this, GpsService.class);
+                try {
+                    if (Build.VERSION.SDK_INT >= 26) startForegroundService(i);
+                    else startService(i);
+                } catch (Exception ignored) { }
+            });
+        }
+
+        @JavascriptInterface
+        public void pause() {
+            runOnUiThread(() -> stopService(new Intent(MainActivity.this, GpsService.class)));
+        }
+
+        @JavascriptInterface
+        public String state() {
+            return GpsService.json();
+        }
     }
 
     /** Dipanggil dari JavaScript sebagai window.AndroidSteps */
