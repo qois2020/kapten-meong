@@ -1126,17 +1126,22 @@ function sensorSteps(){try{return Math.max(0,NS.todaySteps()|0);}catch(e){return
 function useHealth(){return !!NH&&profile.stepSource==="health";}
 function stepsLive(){return useHealth()&&healthDays?(healthDays[todayKey()]||0):sensorSteps();}
 function autoOn(){return useHealth()?healthState==="ok":sensorState()==="on";}
-function upsertAuto(k,st,label){const cur=getDay(k).walks.find(x=>x.src==="sensor");if((!cur&&st<=0)||(cur&&cur.steps===st&&cur.label===label))return false;
+let VEH={};
+function loadVeh(){VEH=NS?safe(()=>JSON.parse(NS.vehicles()),{}):{};}
+function vehOn(){return !!NS&&safe(()=>NS.vehicleAvailable()&&NS.vehicleOn(),false);}
+function upsertAuto(k,raw,label){const v=VEH[k]||{};const vs=v.s||0;const d0=getDay(k);const adj=d0.stepAdj||0;const st=Math.max(0,Math.round(raw-vs-adj));
+  const cur=d0.walks.find(x=>x.src==="sensor");
+  if((!cur&&raw<=0)||(cur&&cur.steps===st&&cur.raw===raw&&(cur.veh||0)===vs&&cur.label===label))return false;
   const day=mutDay(k);let w=day.walks.find(x=>x.src==="sensor");if(!w){w={id:"sensor",src:"sensor",pace:"sedang",time:null};day.walks.unshift(w);}
-  w.steps=st;w.label=label;w.min=Math.round(st/100);w.kcal=Math.round(st*0.04*curWeight()/70);saveDay(k);return true;}
-function syncSteps(){
+  w.steps=st;w.raw=raw;w.veh=vs;w.vehN=v.n||0;w.vehM=v.m||0;w.vehT=v.t||"kendaraan";w.label=label;w.min=Math.round(st/100);w.kcal=Math.round(st*0.04*curWeight()/70);saveDay(k);return true;}
+function syncSteps(){loadVeh();
   if(useHealth()){if(Date.now()-healthAt>60000){healthAt=Date.now();safe(()=>NH.refresh(14));}return;}
   if(sensorState()!=="on")return;const hist=safe(()=>JSON.parse(NS.history()),{});const today=todayKey();let ch=false;
   Object.keys(hist).forEach(k=>{if(k>today||k<shift(today,-30))return;if(upsertAuto(k,Math.round(hist[k]),"sensor HP"))ch=true;});
   if(upsertAuto(today,sensorSteps(),"sensor HP"))ch=true;
   if(ch){if(tab==="steps")renderSteps();if(tab==="home")renderHome();if(sums(today).steps>=profile.stepGoal)celebrate(today,"steps","Kapal sampai di pulau target langkah! 🏝️");}}
 window.__health=r=>{if(!r||!r.ok){healthState=r&&r.reason==="perm"?"perm":"err";renderSettings();if(tab==="steps")renderSteps();return;}
-  healthState="ok";healthDays=r.days||{};const today=todayKey();Object.keys(healthDays).forEach(k=>upsertAuto(k,Math.round(healthDays[k]),"Health Connect"));
+  healthState="ok";healthDays=r.days||{};loadVeh();const today=todayKey();Object.keys(healthDays).forEach(k=>upsertAuto(k,Math.round(healthDays[k]),"Health Connect"));
   if(tab==="steps")renderSteps();if(tab==="home")renderHome();renderSettings();if(sums(today).steps>=profile.stepGoal)celebrate(today,"steps","Kapal sampai di pulau target langkah! 🏝️");};
 function renderSensor(){const c=$("#sensorCard");
   if(useHealth()){c.hidden=false;c.innerHTML=healthState==="ok"?`<div class="row"><div style="font-size:26px">💚</div><div class="small"><b>Tersambung ke Health Connect.</b> Langkah dari HP dan jam pintar masuk otomatis. Hari ini: <b class="num">${fmt(stepsLive())}</b>.</div></div>`
@@ -1144,7 +1149,8 @@ function renderSensor(){const c=$("#sensorCard");
   const st=sensorState();if(st==="none"){c.hidden=true;return;}c.hidden=false;
   if(st==="nohw")c.innerHTML=`<div class="row"><div style="font-size:26px">📵</div><div class="small"><b>HP ini tidak punya sensor langkah.</b> Pakai timer jalan, GPS, atau Health Connect.</div></div>`;
   else if(st==="perm")c.innerHTML=`<div class="row"><div style="font-size:26px">📲</div><div class="small"><b>Hitung langkah otomatis</b><br>Izinkan akses "Aktivitas fisik" supaya langkahmu dihitung sendiri oleh HP.</div></div><button class="btn mint block" data-act="sensorPerm">Izinkan hitung langkah</button>`;
-  else c.innerHTML=`<div class="row"><div style="font-size:26px">✅</div><div class="small"><b>Sensor langkah aktif.</b> Hari ini: <b class="num">${fmt(sensorSteps())}</b>. Tetap tercatat walau aplikasi ditutup.</div></div>`;}
+  else{const inV=safe(()=>NS.inVehicle(),false);c.innerHTML=inV?`<div class="row"><div style="font-size:26px">🏍️</div><div class="small"><b>Sedang naik kendaraan.</b> Langkah dari getaran perjalanan ini tidak akan dihitung.</div></div>`
+    :`<div class="row"><div style="font-size:26px">✅</div><div class="small"><b>Sensor langkah aktif.</b> Tetap tercatat walau aplikasi ditutup.${vehOn()?" Langkah saat naik motor, mobil, atau sepeda diabaikan otomatis.":""}</div></div>`;}}
 
 /* ================= GPS ================= */
 function gpsReady(){try{return !!NG&&NG.available()&&NG.permitted()&&NG.enabled();}catch(e){return false;}}
@@ -1195,7 +1201,7 @@ function renderSteps(){
   const gy=H-22-(profile.stepGoal/max)*(H-40);
   $("#stepChart").innerHTML=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Grafik langkah 7 hari"><line x1="${pad}" x2="${W}" y1="${gy}" y2="${gy}" stroke="#F5B700" stroke-width="2" stroke-dasharray="5 4"/><text x="0" y="${gy+4}">🏝️</text>${bars}</svg>`;
   const d=getDay(viewDate);
-  $("#walkLog").innerHTML=d.walks.length?`<div class="list">`+d.walks.map(x=>x.src==="sensor"?`<div class="item"><div class="ic">${x.label==="Health Connect"?"💚":"📲"}</div><div class="t"><b class="num">${fmt(x.steps)} langkah</b><span class="num">otomatis dari ${esc(x.label||"sensor HP")} · ± ${x.kcal} kkal</span></div></div>`
+  $("#walkLog").innerHTML=d.walks.length?`<div class="list">`+d.walks.map(x=>x.src==="sensor"?`<div class="item"><div class="ic">${x.label==="Health Connect"?"💚":"📲"}</div><div class="t"><b class="num">${fmt(x.steps)} langkah</b><span class="num">otomatis dari ${esc(x.label||"sensor HP")} · ± ${x.kcal} kkal${d.stepAdj?" · dikoreksi manual":""}${x.veh?`<br>${x.vehT==="sepeda"?"🚲":"🏍️"} −${fmt(x.veh)} langkah dari ${x.vehN} perjalanan ${esc(x.vehT||"kendaraan")} (${x.vehM} mnt) tidak dihitung`:""}</span></div><button class="sh" data-act="fixSteps" aria-label="Koreksi jumlah langkah">✏️</button></div>`
     :`<div class="item"><div class="ic">${x.src==="manual"?"📱":x.dist?"📍":"⛵"}</div><div class="t"><b class="num">${x.sens?"Sesi jalan "+fmt(x.min,0)+" menit":fmt(x.steps)+" langkah"}</b><span class="num">${x.dist?fmt(x.dist/1000,2)+" km · ":""}${x.sens?(x.sensSteps?fmt(x.sensSteps)+" langkah · ":""):fmt(x.min,0)+" menit · "}${x.kcal} kkal${x.time?" · "+clock(x.time):""}</span></div>${x.src==="timer"?`<button class="sh" data-act="shareWalk" data-id="${x.id}" aria-label="Bagikan">📤</button>`:""}<button class="x" data-act="delWalk" data-id="${x.id}" aria-label="Hapus">×</button></div>`).join("")+`</div>`
     :`<div class="empty">Belum ada langkah tercatat di hari ini.</div>`;
 }
@@ -1240,7 +1246,8 @@ function renderSettings(){
   if(NH||NS){const hs=NH?safe(()=>NH.status(),"none"):"none";$("#srcCard").hidden=false;
     $("#srcCard").innerHTML=`<h3>Sumber langkah</h3><div class="chips"><button class="chip ${!useHealth()?"on":""}" data-act="src" data-k="sensor">📲 Sensor HP</button>${NH?`<button class="chip ${useHealth()?"on":""}" data-act="src" data-k="health">💚 Health Connect</button>`:""}</div>
     <div class="muted small">${useHealth()?(hs==="none"?"Health Connect belum terpasang di HP ini.":hs==="update"?"Health Connect perlu diperbarui.":healthState==="ok"?"Tersambung. Langkah dari jam pintar, Google Fit, atau Samsung Health yang terhubung ke Health Connect ikut masuk.":"Belum diberi izin membaca langkah."):"Langkah dihitung oleh sensor di HP ini, juga saat aplikasi ditutup."}</div>
-    ${useHealth()?(hs==="ok"?(healthState==="ok"?`<button class="btn ghost sm" data-act="healthRefresh">Muat ulang data</button>`:`<button class="btn mint" data-act="healthConnect">Sambungkan Health Connect</button>`):`<button class="btn" data-act="healthStore">Pasang / perbarui Health Connect</button>`):""}`;}
+    ${useHealth()?(hs==="ok"?(healthState==="ok"?`<button class="btn ghost sm" data-act="healthRefresh">Muat ulang data</button>`:`<button class="btn mint" data-act="healthConnect">Sambungkan Health Connect</button>`):`<button class="btn" data-act="healthStore">Pasang / perbarui Health Connect</button>`):""}
+    ${NS?(safe(()=>NS.vehicleAvailable(),false)?`<div>${tgl("vehOn","🏍️ Abaikan langkah saat naik kendaraan","Motor, mobil, dan sepeda dideteksi otomatis oleh HP",vehOn())}</div>`:`<div class="note">🏍️ Deteksi naik kendaraan butuh Google Play Services, yang tidak ada di HP ini.</div>`):""}`;}
   if(NN){$("#remCard").hidden=false;const ok=safe(()=>NN.permitted(),true);
     $("#remCard").innerHTML=`<h3>Pengingat</h3>${ok?"":`<div class="note row between" style="gap:8px"><span>🔕 Notifikasi belum diizinkan</span><button class="btn sm mint" data-act="notifPerm">Izinkan</button></div>`}
     <div>${tgl("remFast","⏳ Buka puasa","Saat target jam puasa tercapai",profile.rem.fast)}${tgl("remWater","💧 Minum air","Tiap 2 jam (09.00–19.00) kalau target belum tercapai",profile.rem.water)}
@@ -1293,7 +1300,13 @@ function cheer(text){$("#walkBubble").textContent=text;speak(text);vibe(80);}
 function tickWalk(){const el=walkElapsed();$("#walkTime").textContent=hhmm(el);const w=profile.walk;
   $("#walkSteps").textContent=fmt(w&&w.sensor0!=null&&autoOn()?Math.max(0,stepsLive()-w.sensor0):Math.round(el/60000*PACES[profile.pace].spm));tickGps();
   if(w&&w.running){const m5=Math.floor(el/300000);if(m5>(w.cheerMin||0)){w.cheerMin=m5;cheer(m5*5+" menit! "+rnd(CHEERS));}
-    if(w.gps){const km=Math.floor(gpsState().m/500);if(km>(w.cheerKm||0)){w.cheerKm=km;cheer(fmt(km*0.5,1)+" kilometer! "+rnd(CHEERS));}}}}
+    if(w.gps){const g=gpsState();const km=Math.floor((g.m-(w.cut||0))/500);if(km>(w.cheerKm||0)){w.cheerKm=km;cheer(fmt(km*0.5,1)+" kilometer! "+rnd(CHEERS));}
+      if(g.fix&&g.spd*3.6>18){if(!w.fast)w.fastM0=g.m;w.fast=(w.fast||0)+1;}else w.fast=0;
+      if(w.fast>=20){w.cut=(w.cut||0)+Math.max(0,g.m-(w.fastM0||g.m));w.fast=0;w.acc+=Date.now()-w.startedAt;w.running=false;gpsCall("pause");saveProfile();renderSteps();
+        speak("Sepertinya kamu naik kendaraan. Sesi jalan dijeda.");vibe(250);
+        sheet(`<div style="font-size:64px;text-align:center">🏍️</div><h3 style="text-align:center">Sepertinya kamu naik kendaraan</h3>
+          <p class="muted" style="text-align:center;margin:0">Kecepatanmu di atas 18 km/jam selama 20 detik, jadi sesi jalan Kapten jeda otomatis. Jarak saat berkendara tidak dihitung.</p>
+          <button class="btn coral block" data-act="walkStop">Akhiri & simpan sesi</button><button class="btn ghost block" data-act="walkResumeClose">Lanjut jalan</button>`);}}}}
 function tickFast(){const f=profile.fast;if(!f)return;const el=Date.now()-f.start,goal=f.goal*36e5;const p=Math.min(1,el/goal);
   const ft=$("#frTime");if(ft){ft.textContent=hhmm(el);$("#frLeft").textContent=el>=goal?"Target tercapai! Boleh buka 🎉":"sisa "+hhmm(goal-el);
     const arc=$("#frArc");const c=2*Math.PI*96;arc.setAttribute("stroke-dashoffset",c*(1-p));arc.setAttribute("stroke",p>=1?"#22B98A":"#8E7CF0");}
@@ -1503,12 +1516,20 @@ document.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(
   case "walkStart":profile.walk={startedAt:Date.now(),acc:0,running:true,sensor0:autoOn()?stepsLive():null,gps:gpsReady()&&profile.gps!==false,cheerMin:0,cheerKm:0};
     if(profile.walk.gps)gpsCall("start",true);saveProfile();renderSteps();audio();cheer("Angkat jangkar! Ayo berlayar ⛵");break;
   case "walkPause":{const w=profile.walk;w.acc+=Date.now()-w.startedAt;w.running=false;if(w.gps)gpsCall("pause");saveProfile();renderSteps();$("#walkBubble").textContent="Istirahat sebentar, minum dulu 💧";break;}
+  case "walkResumeClose":closeSheet();if(profile.walk&&!profile.walk.running){const w=profile.walk;w.startedAt=Date.now();w.running=true;w.fast=0;if(w.gps)gpsCall("start",false);saveProfile();renderSteps();cheer("Lanjut berlayar!");}break;
+  case "fixSteps":{const w=getDay(viewDate).walks.find(x=>x.src==="sensor");if(!w)break;
+    sheet(`<h3>✏️ Koreksi langkah</h3><p class="muted" style="margin:0">Sensor mencatat <b>${fmt(w.raw||w.steps)}</b> langkah${w.veh?`, dikurangi ${fmt(w.veh)} langkah saat berkendara`:""}. Isi jumlah langkah yang benar untuk ${esc(prettyDate(viewDate,true))}.</p>
+      <label class="f" for="fixIn">Langkah sebenarnya<input type="number" id="fixIn" inputmode="numeric" value="${w.steps}"></label>
+      <button class="btn block" data-act="saveFix">Simpan koreksi</button>${getDay(viewDate).stepAdj?`<button class="btn ghost block" data-act="clearFix">Hapus koreksi</button>`:""}<button class="btn ghost block" data-act="closeSheet">Batal</button>`);break;}
+  case "saveFix":{const v=Math.round(+$("#fixIn").value);if(!(v>=0)){toast("Isi angka langkah yang benar");break;}const day=mutDay(viewDate);const w=day.walks.find(x=>x.src==="sensor");if(!w)break;
+    day.stepAdj=Math.round((w.raw||w.steps)-(w.veh||0)-v);w.steps=-1;upsertAuto(viewDate,w.raw||0,w.label||"sensor HP");closeSheet();renderSteps();renderHome();toast("Langkah dikoreksi jadi "+fmt(v)+" 👣");break;}
+  case "clearFix":{const day=mutDay(viewDate);delete day.stepAdj;const w=day.walks.find(x=>x.src==="sensor");if(w){w.steps=-1;upsertAuto(viewDate,w.raw||0,w.label||"sensor HP");}closeSheet();renderSteps();renderHome();break;}
   case "walkResume":{const w=profile.walk;w.startedAt=Date.now();w.running=true;if(w.gps)gpsCall("start",false);saveProfile();renderSteps();cheer("Lanjut berlayar!");break;}
   case "walkStop":{const w=profile.walk;const el=walkElapsed();const g=w&&w.gps?gpsState():null;if(w&&w.gps)gpsCall("pause");
     profile.walk=null;saveProfile();const min=el/60000;
     if(min<0.25){toast("Sesi terlalu singkat, tidak disimpan");renderSteps();break;}
     const P=PACES[profile.pace];const k=todayKey();const day=mutDay(k);
-    const dist=g&&g.m>=30?Math.round(g.m):0;const auto=autoOn();
+    const gm=g?Math.max(0,g.m-(w.cut||0)):0;const dist=gm>=30?Math.round(gm):0;const auto=autoOn();
     const delta=auto&&w.sensor0!=null?Math.max(0,stepsLive()-w.sensor0):0;
     let met=P.met;if(dist){const kmh=dist/1000/(min/60);met=kmh<3.5?2.8:kmh<4.8?3.5:kmh<5.6?4.3:kmh<6.5?5.0:kmh<8?7.0:9.0;}
     let note="";
@@ -1582,6 +1603,7 @@ document.addEventListener("click",e=>{const b=e.target.closest("[data-act]");if(
 function markShared(){profile.shares=(profile.shares||0)+1;if(profile.shares===1)award(20);saveProfile();checkBadges();}
 document.addEventListener("change",e=>{const id=e.target.id;
   if(id==="gpsOn"){profile.gps=e.target.checked;saveProfile();}
+  if(id==="vehOn"){safe(()=>NS.setVehicle(e.target.checked));toast(e.target.checked?"Langkah saat berkendara akan diabaikan 🏍️":"Deteksi kendaraan dimatikan");}
   if(id==="winStart"&&e.target.value){profile.windowStart=e.target.value;saveProfile();renderFast();renderHome();}
   if(id==="lowDay"){mutDay(viewDate).lowDay=e.target.checked;_saveDay(viewDate);renderFood();renderHome();toast(e.target.checked?"Hari rendah kalori: target "+kcalGoal()+" kkal":"Kembali ke target normal");}
   const rem={remFast:"fast",remWater:"water",remSteps:"steps",remWeigh:"weigh"};if(rem[id]){profile.rem[rem[id]]=e.target.checked;saveProfile();}

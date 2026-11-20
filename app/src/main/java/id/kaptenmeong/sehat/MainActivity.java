@@ -124,6 +124,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         if (!ask.isEmpty()) requestPermissions(ask.toArray(new String[0]), REQ_START);
 
         Reminders.scheduleAll(this);
+        VehicleReceiver.register(this);
     }
 
     private boolean hasActivityPermission() {
@@ -169,6 +170,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         startListening();
+        VehicleReceiver.register(this);
         notifyPage();
     }
 
@@ -260,6 +262,32 @@ public class MainActivity extends Activity implements SensorEventListener {
         @JavascriptInterface
         public String history() {
             return StepStore.history(MainActivity.this).toString();
+        }
+
+        @JavascriptInterface
+        public String vehicles() {
+            return StepStore.vehicles(MainActivity.this).toString();
+        }
+
+        @JavascriptInterface
+        public boolean vehicleAvailable() {
+            return VehicleReceiver.available(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public boolean vehicleOn() {
+            return VehicleReceiver.enabled(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public boolean inVehicle() {
+            return StepStore.inVehicle(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void setVehicle(boolean on) {
+            StepStore.prefs(MainActivity.this).edit().putBoolean("vehOn", on).apply();
+            VehicleReceiver.register(MainActivity.this);
         }
 
         @JavascriptInterface

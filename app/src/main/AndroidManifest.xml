@@ -80,6 +80,10 @@
         </receiver>
 
         <receiver
+            android:name=".VehicleReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".MeongWidget"
             android:exported="true"
             android:label="Kapten Meong">

@@ -11,13 +11,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
 
 import org.json.JSONObject;
 
@@ -129,6 +123,7 @@ public class Reminders extends BroadcastReceiver {
         String action = intent.getAction();
         if (Intent.ACTION_BOOT_COMPLETED.equals(action) || Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
             scheduleAll(c);
+            VehicleReceiver.register(c);
             return;
         }
         String type = intent.getStringExtra("type");
@@ -207,36 +202,9 @@ public class Reminders extends BroadcastReceiver {
 
     /** Baca sensor langkah sebentar di latar belakang, lalu simpan. */
     private static void captureSteps(final Context c, final PendingResult pr) {
-        final SensorManager sm = (SensorManager) c.getSystemService(Context.SENSOR_SERVICE);
-        Sensor sensor = sm == null ? null : sm.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
-        boolean allowed = Build.VERSION.SDK_INT < 29
-                || c.checkSelfPermission(Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED;
-        if (sensor == null || !allowed) {
+        StepStore.readOnce(c, v -> {
+            MeongWidget.updateAll(c);
             pr.finish();
-            return;
-        }
-        final boolean[] done = {false};
-        final SensorEventListener listener = new SensorEventListener() {
-            @Override
-            public void onSensorChanged(SensorEvent e) {
-                if (done[0]) return;
-                done[0] = true;
-                StepStore.record(c, (long) e.values[0]);
-                sm.unregisterListener(this);
-                MeongWidget.updateAll(c);
-                pr.finish();
-            }
-
-            @Override
-            public void onAccuracyChanged(Sensor s, int a) { }
-        };
-        sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL);
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (!done[0]) {
-                done[0] = true;
-                sm.unregisterListener(listener);
-                pr.finish();
-            }
-        }, 6000);
+        }, pr::finish);
     }
 }
