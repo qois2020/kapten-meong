@@ -2,7 +2,11 @@ name: Build APK
 
 on:
   push:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -18,7 +22,26 @@ jobs:
           gradle-version: '8.9'
       - name: Build APK
         run: gradle assembleRelease --no-daemon
+      - name: Siapkan file APK
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/*.apk out/KaptenMeong.apk
       - uses: actions/upload-artifact@v4
         with:
           name: KaptenMeong-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: out/KaptenMeong.apk
+      - name: Simpan APK ke branch "apk"
+        run: |
+          cd out
+          git init -q -b apk
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add KaptenMeong.apk
+          git commit -qm "APK dari ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" apk
+      - name: Rilis di GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Kapten Meong v1.0.${{ github.run_number }}
+          files: out/KaptenMeong.apk
